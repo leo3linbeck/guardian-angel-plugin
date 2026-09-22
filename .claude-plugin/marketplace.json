@@ -1,0 +1,22 @@
+{
+  "name": "linbeck-tools",
+  "owner": {
+    "name": "Leo Linbeck III"
+  },
+  "description": "Guardian Angel and related tools.",
+  "plugins": [
+    {
+      "name": "guardian-angel",
+      "source": "./",
+      "version": "0.1.0",
+      "description": "Gate every Claude Code tool call through Guardian Angel.",
+      "category": "Safety",
+      "tags": [
+        "safety",
+        "hooks",
+        "conscience",
+        "guardian-angel"
+      ]
+    }
+  ]
+}

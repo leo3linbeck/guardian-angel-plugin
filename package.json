@@ -1,0 +1,13 @@
+{
+  "name": "guardian-angel-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Claude Code plugin: the Guardian Angel client adapter (System 0 + thin client + ga CLI).",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "sync-core": "node scripts/sync-core.mjs",
+    "test": "node --test test/*.test.js"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "guardian-angel",
+  "displayName": "Guardian Angel",
+  "description": "A conscience for Claude Code: every tool call is judged by a local reflex, and what the reflex cannot settle goes to the Guardian Angel service (System 1 intuition, System 2 deliberation) and, when needed, to you.",
+  "version": "0.1.0",
+  "license": "MIT",
+  "author": {
+    "name": "Leo Linbeck III"
+  },
+  "repository": "https://github.com/leo3linbeck/guardian-angel-plugin"
+}
