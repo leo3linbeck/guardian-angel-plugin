@@ -4,6 +4,16 @@ The Claude Code client adapter for **Guardian Angel**: a PreToolUse hook holding
 System 0 (the local reflex), edge redaction, and a thin client to the Guardian
 Angel service, plus the `ga` command line for linking a machine.
 
+The one-paste way: open **Set up** in the web app, choose Claude Code, press the
+button, and paste the command it shows. It runs this repo's `ga` straight from
+GitHub, installs the plugin with the `claude plugin` CLI, and links the machine:
+
+```
+npx --yes github:leo3linbeck/guardian-angel-plugin setup --harness claude-code --token gal_… --service https://ga.linbeck.app
+```
+
+By hand:
+
 ```
 /plugin marketplace add leo3linbeck/guardian-angel-plugin
 /plugin install guardian-angel@linbeck-tools
@@ -28,7 +38,7 @@ machine puts the decision to you; nothing is ever approved because the guard bro
 hooks/hooks.json          PreToolUse (60 s) and PostToolUse (10 s)
 bin/ga-hook.js            the hook
 bin/ga-post-hook.js       reports "you approved it" to the audit log when an escalated call runs
-bin/ga.js                 ga login | status | logout
+bin/ga.js                 ga setup | login | status | logout
 lib/core/                 vendored from conscience-research/tests/harness (scripts/sync-core.mjs)
 lib/client.js             credentials, token refresh, JSON API
 lib/transcript.js         the principal's request and the agent's history, from the transcript

@@ -172,3 +172,34 @@ test('the post-hook ignores calls that were never escalated', async () => {
 	const dir = tempConfig('http://127.0.0.1:1', { linked: false });
 	assert.equal(await runHook(POST, BASH('ls'), { GA_CONFIG_DIR: dir }), null);
 });
+
+test('ga setup redeems a Set up page token and saves credentials (adapter step skipped)', async () => {
+	const { server, calls, url } = await mockService((u, body) => {
+		if (u !== '/api/v1/device/redeem') return { status: 404, json: {} };
+		if (body.token !== 'gal_good') return { status: 400, json: { error: 'already_used', error_description: 'This link token was already used' } };
+		return { json: { registration_token: 'gar_new', access_token: 'acc', expires_in: 900, device_id: 'dev-9', device_name: body.name } };
+	});
+	try {
+		const dir = tempConfig(url, { linked: false });
+		const run = (token) => new Promise((resolve) => {
+			const child = spawn(process.execPath, [path.join(__dirname, '..', 'bin', 'ga.js'), 'setup', '--harness', 'claude-code', '--token', token, '--service', url, '--name', 'box', '--skip-adapter'], { env: { ...process.env, GA_CONFIG_DIR: dir } });
+			let out = '', err = '';
+			child.stdout.on('data', (c) => (out += c)); child.stderr.on('data', (c) => (err += c));
+			child.on('close', (code) => resolve({ code, out, err }));
+		});
+		const ok = await run('gal_good');
+		assert.equal(ok.code, 0, ok.err);
+		assert.match(ok.out, /Linked "box"/);
+		const creds = JSON.parse(fs.readFileSync(path.join(dir, 'credentials.json'), 'utf8'));
+		assert.equal(creds.registration_token, 'gar_new');
+		assert.equal(creds.harness, 'claude-code');
+		assert.equal(calls[0].body.harness, 'claude-code');
+		assert.equal(calls[0].body.client_version, require('../package.json').version);
+
+		const bad = await run('gal_used');
+		assert.notEqual(bad.code, 0);
+		assert.match(bad.err, /already used/);
+		const missing = await run('nope');
+		assert.notEqual(missing.code, 0);
+	} finally { server.close(); }
+});

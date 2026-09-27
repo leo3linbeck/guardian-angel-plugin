@@ -2,16 +2,22 @@
 /**
  * ga — Guardian Angel command line
  *
- *   ga login [--service URL]   link this machine to your Guardian Angel account
+ *   ga setup --harness claude-code --token gal_… [--service URL]
+ *                              the Set up page's one command: install the adapter for
+ *                              the harness and link this machine, no code to type
+ *   ga login [--service URL]   link this machine interactively (device code)
  *   ga status                  service health, linked device, token state
  *   ga logout                  forget this machine's credentials
  *   ga help
+ *
+ * Runs from a checkout, from the installed plugin, or straight from GitHub:
+ *   npx --yes github:leo3linbeck/guardian-angel-plugin setup …
  *
  * Revoke a machine from the web app (Devices) if you no longer have it.
  */
 'use strict';
 const os = require('os');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 const client = require('../lib/client');
 const { credentialsPath, DEFAULT_SERVICE_URL, CLIENT_VERSION } = require('../lib/paths');
 
@@ -49,15 +55,7 @@ async function login() {
 		await sleep(wait);
 		const r = await client.devicePoll(serviceUrl, device_code);
 		if (r.ok && r.json && r.json.registration_token) {
-			client.saveCredentials({
-				service_url: serviceUrl,
-				registration_token: r.json.registration_token,
-				access_token: r.json.access_token,
-				expires_at: Math.floor(Date.now() / 1000) + Number(r.json.expires_in || 900),
-				device_id: r.json.device_id,
-				device_name: r.json.device_name || name,
-				linked_at: new Date().toISOString(),
-			});
+			saveLinkedCredentials(serviceUrl, r.json, name, 'claude-code');
 			out(`\n  Linked "${r.json.device_name || name}". Credentials saved to ${credentialsPath()} (mode 0600).`);
 			out('  Guardian Angel now guards Claude Code on this machine.\n');
 			return;
@@ -71,6 +69,78 @@ async function login() {
 		die(`\n  Unexpected response (${r.status}): ${JSON.stringify(r.json)}`);
 	}
 	die('\n  Timed out waiting for approval. Run `ga login` again.');
+}
+
+// ── setup: the one-paste installer ────────────────────────────────────
+const MARKETPLACE_REPO = 'leo3linbeck/guardian-angel-plugin';
+const MARKETPLACE_NAME = 'linbeck-tools';
+const PLUGIN_NAME = 'guardian-angel';
+
+function saveLinkedCredentials(serviceUrl, json, name, harness) {
+	client.saveCredentials({
+		service_url: serviceUrl,
+		registration_token: json.registration_token,
+		access_token: json.access_token,
+		expires_at: Math.floor(Date.now() / 1000) + Number(json.expires_in || 900),
+		device_id: json.device_id,
+		device_name: json.device_name || name,
+		harness,
+		linked_at: new Date().toISOString(),
+	});
+}
+
+/** Install the Claude Code plugin with the terminal CLI. Returns null on success, else the reason. */
+function installClaudeCodePlugin() {
+	const run = (args) => spawnSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+	const probe = run(['--version']);
+	if (probe.error || probe.status !== 0) return 'the `claude` command is not on the PATH here';
+	out(`  Claude Code ${String(probe.stdout).trim()}`);
+	const add = run(['plugin', 'marketplace', 'add', MARKETPLACE_REPO]);
+	// Already-added marketplaces report a non-zero status with an "already" message; that is fine.
+	if (add.status !== 0 && !/already/i.test(add.stdout + add.stderr)) return `marketplace add failed: ${(add.stderr || add.stdout).trim().slice(0, 300)}`;
+	const install = run(['plugin', 'install', `${PLUGIN_NAME}@${MARKETPLACE_NAME}`, '--yes']);
+	if (install.status !== 0 && !/already/i.test(install.stdout + install.stderr)) return `plugin install failed: ${(install.stderr || install.stdout).trim().slice(0, 300)}`;
+	const update = run(['plugin', 'update', PLUGIN_NAME]);
+	void update; // best effort: brings an existing install to the latest version
+	return null;
+}
+
+async function setup() {
+	const harness = flag('--harness') || 'claude-code';
+	const token = flag('--token');
+	const serviceUrl = (flag('--service') || process.env.GA_SERVICE_URL || DEFAULT_SERVICE_URL).replace(/\/+$/, '');
+	const name = flag('--name') || `${os.hostname()} (${os.userInfo().username})`;
+	if (!token || !token.startsWith('gal_')) die('  --token is required: generate the command on the Set up page.');
+	if (harness !== 'claude-code') die(`  Harness "${harness}" is not available yet. Claude Code is the only harness the installer supports today.`);
+
+	out('');
+	out(`  Guardian Angel setup for ${harness}`);
+
+	// 1. Adapter. Skippable for tests and for people who installed the plugin already.
+	if (!args.includes('--skip-adapter')) {
+		const problem = installClaudeCodePlugin();
+		if (problem) {
+			out(`  Could not install the Claude Code plugin automatically: ${problem}.`);
+			out('  Install it inside Claude Code instead, then re-run this command with --skip-adapter:');
+			out(`    /plugin marketplace add ${MARKETPLACE_REPO}`);
+			out(`    /plugin install ${PLUGIN_NAME}@${MARKETPLACE_NAME}`);
+			process.exit(1);
+		}
+		out('  Plugin installed.');
+	}
+
+	// 2. Link. The approval happened on the Set up page; redeem the token for credentials.
+	const r = await client.redeemLink(serviceUrl, { token, name, harness, client_version: CLIENT_VERSION });
+	if (!r.ok || !r.json || !r.json.registration_token) {
+		const why = (r.json && r.json.error_description) || r.error || `HTTP ${r.status}`;
+		die(`  Could not link this machine: ${why}`);
+	}
+	saveLinkedCredentials(serviceUrl, r.json, name, harness);
+	out(`  Linked "${r.json.device_name || name}" to ${serviceUrl}.`);
+	out(`  Credentials saved to ${credentialsPath()} (mode 0600).`);
+	out('');
+	out('  Done. Start (or restart) Claude Code; every tool call is now judged by Guardian Angel.');
+	out('');
 }
 
 async function status() {
@@ -101,10 +171,11 @@ function logout() {
 function help() {
 	out(`ga — Guardian Angel
 
+  ga setup --harness claude-code --token gal_… [--service URL] [--name NAME] [--skip-adapter]
   ga login [--service URL] [--name NAME] [--no-browser]
   ga status
   ga logout
 `);
 }
 
-({ login, status, logout, help, '--help': help, '-h': help }[cmd] || (() => die(`Unknown command: ${cmd}\n`) ))();
+({ setup, login, status, logout, help, '--help': help, '-h': help }[cmd] || (() => die(`Unknown command: ${cmd}\n`)))();

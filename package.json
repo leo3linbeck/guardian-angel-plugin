@@ -9,5 +9,16 @@
   "scripts": {
     "sync-core": "node scripts/sync-core.mjs",
     "test": "node --test test/*.test.js"
-  }
+  },
+  "bin": {
+    "ga": "bin/ga.js"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "hooks",
+    "skills",
+    ".claude-plugin",
+    "README.md"
+  ]
 }

@@ -13,7 +13,12 @@ prompt. Nothing the reflex clears leaves the machine.
 
 ## Linking this machine
 
-The plugin adds `ga` to the PATH. Ask the user to run, in their own terminal:
+The quickest path is the web app's **Set up** page: the user chooses Claude Code,
+presses the button, and pastes the one command it shows into their own terminal.
+That command installs this plugin and links the machine with nothing to type.
+
+If the plugin is already installed, `ga` is on the PATH inside Claude Code, and
+the interactive way works too. Ask the user to run, in their own terminal:
 
 ```sh
 ga login
