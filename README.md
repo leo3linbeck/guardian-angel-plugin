@@ -4,7 +4,14 @@ The Claude Code client adapter for **Guardian Angel**: a PreToolUse hook holding
 System 0 (the local reflex), edge redaction, and a thin client to the Guardian
 Angel service, plus the `ga` command line for linking a machine.
 
-The one-paste way: open **Set up** in the web app, choose Claude Code, press the
+**Inside Claude Code** (no terminal): open **Set up** in the web app, choose Claude
+Code, press the button, then in Claude Code run the one line it shows —
+`/plugin install guardian-angel --marketplace leo3linbeck/guardian-angel-plugin` —
+paste the link token when Claude Code asks for it, and `/reload-plugins`. The
+SessionStart hook redeems the token and links the machine. Already installed?
+`/guardian-angel:link <token>`.
+
+**From a terminal**: open **Set up**, choose Claude Code, press the
 button, and paste the command it shows. It runs this repo's `ga` straight from
 GitHub, installs the plugin with the `claude plugin` CLI, and links the machine:
 
@@ -35,7 +42,8 @@ machine puts the decision to you; nothing is ever approved because the guard bro
 ## Layout
 
 ```
-hooks/hooks.json          PreToolUse (60 s) and PostToolUse (10 s)
+hooks/hooks.json          SessionStart (links from the plugin option), PreToolUse (60 s), PostToolUse (10 s)
+bin/ga-session-start.js   redeems the `link_token` option on the first session after install
 bin/ga-hook.js            the hook
 bin/ga-post-hook.js       reports "you approved it" to the audit log when an escalated call runs
 bin/ga.js                 ga setup | login | status | logout
@@ -44,6 +52,7 @@ lib/client.js             credentials, token refresh, JSON API
 lib/transcript.js         the principal's request and the agent's history, from the transcript
 lib/state.js              pending escalations (call_id → escalation id)
 skills/guardian-angel/    tells Claude how to walk a user through setup and refusals
+skills/link/              /guardian-angel:link <token> — redeem a Set up page token in-session
 ```
 
 ## Development

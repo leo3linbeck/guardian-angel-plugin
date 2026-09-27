@@ -7,5 +7,21 @@
   "author": {
     "name": "Leo Linbeck III"
   },
-  "repository": "https://github.com/leo3linbeck/guardian-angel-plugin"
+  "repository": "https://github.com/leo3linbeck/guardian-angel-plugin",
+  "userConfig": {
+    "link_token": {
+      "type": "string",
+      "title": "Link token",
+      "required": false,
+      "sensitive": true,
+      "description": "From the Set up page at https://ga.linbeck.app/setup (single use, valid ten minutes). Links this machine to your Guardian Angel account at the start of the next session. Leave blank if this machine is already linked."
+    },
+    "service_url": {
+      "type": "string",
+      "title": "Service URL",
+      "required": false,
+      "default": "https://ga.linbeck.app",
+      "description": "The Guardian Angel service this machine reports to."
+    }
+  }
 }

@@ -17,6 +17,11 @@ The quickest path is the web app's **Set up** page: the user chooses Claude Code
 presses the button, and pastes the one command it shows into their own terminal.
 That command installs this plugin and links the machine with nothing to type.
 
+Inside Claude Code the same page offers `/plugin install guardian-angel --marketplace
+leo3linbeck/guardian-angel-plugin`; Claude Code asks for the link token during install
+and the SessionStart hook redeems it. With the plugin already installed, run
+`/guardian-angel:link <token>`.
+
 If the plugin is already installed, `ga` is on the PATH inside Claude Code, and
 the interactive way works too. Ask the user to run, in their own terminal:
 
@@ -55,7 +60,7 @@ The permission reason carries a prefix:
 
 ## Troubleshooting
 
-- "not linked": run `ga login`.
+- "not linked": `/guardian-angel:link <token>` with a token from the Set up page, or `ga login`.
 - "link was revoked or expired": run `ga login` again; the device was revoked in the
   web app or the account was suspended.
 - "service unreachable": check `ga status`; network or service outage. Guardian

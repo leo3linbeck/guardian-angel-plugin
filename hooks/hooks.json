@@ -24,6 +24,18 @@
           }
         ]
       }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/bin/ga-session-start.js\"",
+            "timeout": 20
+          }
+        ]
+      }
     ]
   }
 }

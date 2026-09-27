@@ -146,9 +146,13 @@ const trail = { system0: 'ESCALATE [unrecognised]' };
 	}, { redact: true });
 
 	// ── Service: System 1 → System 2 → (escalation) ──────────────────────
-	const creds = client.loadCredentials();
+	let creds = client.loadCredentials();
 	if (!creds) {
-		return toPrincipal('Guardian Angel is not linked on this machine — run `ga login`. Until then, your decision', [`SYSTEM 0: ${trail.system0}`]);
+		// In-harness setup: the plugin option may hold a Set up page token nobody has redeemed yet.
+		try { const r = await require('../lib/link').linkFromOption(); if (r.status === 'linked') creds = r.creds; } catch { /* fall through */ }
+	}
+	if (!creds) {
+		return toPrincipal('Guardian Angel is not linked on this machine — run /guardian-angel:link <token> with a token from the Set up page. Until then, your decision', [`SYSTEM 0: ${trail.system0}`]);
 	}
 	const result = await client.evaluate(creds, normalized, { timeoutMs: EVALUATE_TIMEOUT_MS });
 	if (!result.ok) {

@@ -203,3 +203,49 @@ test('ga setup redeems a Set up page token and saves credentials (adapter step s
 		assert.notEqual(missing.code, 0);
 	} finally { server.close(); }
 });
+
+test('the SessionStart hook links from the plugin option once, then stays quiet', async () => {
+	const { server, calls, url } = await mockService((u, body) => {
+		if (u !== '/api/v1/device/redeem') return { status: 404, json: {} };
+		if (body.token === 'gal_expired') return { status: 400, json: { error: 'expired_token', error_description: 'This link token has expired' } };
+		return { json: { registration_token: 'gar_opt', access_token: 'acc', expires_in: 900, device_id: 'dev-opt', device_name: body.name } };
+	});
+	const START = path.join(__dirname, '..', 'bin', 'ga-session-start.js');
+	const run = (bin, env) => new Promise((resolve) => {
+		const child = spawn(process.execPath, [bin], { env: { ...process.env, ...env } });
+		let out = ''; child.stdout.on('data', (c) => (out += c));
+		child.on('close', (code) => resolve({ code, out }));
+		child.stdin.end('{}');
+	});
+	try {
+		const dir = tempConfig(url, { linked: false });
+		const env = { GA_CONFIG_DIR: dir, CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_opt', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url };
+
+		const none = await run(START, { GA_CONFIG_DIR: dir, CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
+		assert.match(none.out, /not linked/);
+		assert.equal(calls.length, 0);
+
+		const first = await run(START, env);
+		assert.equal(first.code, 0);
+		assert.match(first.out, /linked this machine as/);
+		const creds = JSON.parse(fs.readFileSync(path.join(dir, 'credentials.json'), 'utf8'));
+		assert.equal(creds.registration_token, 'gar_opt');
+		assert.equal(creds.linked_via, 'plugin_option');
+		assert.equal(calls[0].body.client_version, require('../package.json').version);
+
+		const second = await run(START, env);
+		assert.equal(second.out, '', 'already linked → silent');
+		assert.equal(calls.length, 1, 'the stale option is never redeemed again');
+
+		const dir2 = tempConfig(url, { linked: false });
+		const failed = await run(START, { GA_CONFIG_DIR: dir2, CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_expired', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
+		assert.match(failed.out, /could not link .*expired/);
+		assert.ok(!fs.existsSync(path.join(dir2, 'credentials.json')));
+
+		// The PreToolUse hook also links from the option when it finds no credentials.
+		const dir3 = tempConfig(url, { linked: false });
+		const pre = await runHook(HOOK, BASH('rm -rf build'), { GA_CONFIG_DIR: dir3, CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_opt', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
+		assert.equal(pre.permissionDecision, 'ask'); // mock has no /evaluate → unreachable → principal
+		assert.ok(fs.existsSync(path.join(dir3, 'credentials.json')), 'pre-hook linked before evaluating');
+	} finally { server.close(); }
+});
