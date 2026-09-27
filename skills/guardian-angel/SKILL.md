@@ -37,6 +37,13 @@ escalated call is put to the user with the reason "not linked".
 If the user is not yet on the alpha allowlist they will see a waitlist page after
 signing in; an admin must approve them before `ga login` completes.
 
+## Where it works
+
+Guardian Angel needs Claude Code's hooks, which run in the Claude Code command-line app.
+The Code tab inside the Claude desktop app and Cowork do not run plugin hooks yet, so
+the plugin installs there but guards nothing. If the user is in the desktop app, say so
+and point them to the command-line app (`claude --version`, `claude update`).
+
 ## Checking
 
 ```sh

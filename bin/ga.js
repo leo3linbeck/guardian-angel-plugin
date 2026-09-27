@@ -93,12 +93,16 @@ function saveLinkedCredentials(serviceUrl, json, name, harness) {
 function installClaudeCodePlugin() {
 	const run = (args) => spawnSync('claude', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
 	const probe = run(['--version']);
-	if (probe.error || probe.status !== 0) return 'the `claude` command is not on the PATH here';
+	if (probe.error || probe.status !== 0) return 'the `claude` command is not on the PATH here (the Claude desktop app bundles its own copy, which this installer cannot use)';
 	out(`  Claude Code ${String(probe.stdout).trim()}`);
 	const add = run(['plugin', 'marketplace', 'add', MARKETPLACE_REPO]);
 	// Already-added marketplaces report a non-zero status with an "already" message; that is fine.
 	if (add.status !== 0 && !/already/i.test(add.stdout + add.stderr)) return `marketplace add failed: ${(add.stderr || add.stdout).trim().slice(0, 300)}`;
-	const install = run(['plugin', 'install', `${PLUGIN_NAME}@${MARKETPLACE_NAME}`, '--yes']);
+	let install = run(['plugin', 'install', `${PLUGIN_NAME}@${MARKETPLACE_NAME}`, '--yes']);
+	// Claude Code before 2.1.229 has no --yes; this plugin needs no confirmation, so retry without it.
+	if (install.status !== 0 && /unknown option|--yes/i.test(install.stdout + install.stderr)) {
+		install = run(['plugin', 'install', `${PLUGIN_NAME}@${MARKETPLACE_NAME}`]);
+	}
 	if (install.status !== 0 && !/already/i.test(install.stdout + install.stderr)) return `plugin install failed: ${(install.stderr || install.stdout).trim().slice(0, 300)}`;
 	const update = run(['plugin', 'update', PLUGIN_NAME]);
 	void update; // best effort: brings an existing install to the latest version
