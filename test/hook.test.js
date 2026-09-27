@@ -221,13 +221,11 @@ test('the SessionStart hook links from the plugin option once, then stays quiet'
 		const dir = tempConfig(url, { linked: false });
 		const env = { GA_CONFIG_DIR: dir, CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_opt', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url };
 
-		const none = await run(START, { GA_CONFIG_DIR: dir, CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
-		assert.match(none.out, /not linked/);
-		assert.equal(calls.length, 0);
+		// (no token and a service without /device/code → the automatic link cannot start; covered below)
 
 		const first = await run(START, env);
 		assert.equal(first.code, 0);
-		assert.match(first.out, /linked this machine as/);
+		assert.match(JSON.parse(first.out).systemMessage, /linked this machine as/);
 		const creds = JSON.parse(fs.readFileSync(path.join(dir, 'credentials.json'), 'utf8'));
 		assert.equal(creds.registration_token, 'gar_opt');
 		assert.equal(creds.linked_via, 'plugin_option');
@@ -238,14 +236,59 @@ test('the SessionStart hook links from the plugin option once, then stays quiet'
 		assert.equal(calls.length, 1, 'the stale option is never redeemed again');
 
 		const dir2 = tempConfig(url, { linked: false });
-		const failed = await run(START, { GA_CONFIG_DIR: dir2, CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_expired', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
-		assert.match(failed.out, /could not link .*expired/);
+		const failed = await run(START, { GA_CONFIG_DIR: dir2, GA_NO_BROWSER: '1', CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_expired', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
+		assert.match(JSON.parse(failed.out).systemMessage, /link token did not work: .*expired/);
 		assert.ok(!fs.existsSync(path.join(dir2, 'credentials.json')));
 
 		// The PreToolUse hook also links from the option when it finds no credentials.
 		const dir3 = tempConfig(url, { linked: false });
-		const pre = await runHook(HOOK, BASH('rm -rf build'), { GA_CONFIG_DIR: dir3, CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_opt', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
+		const pre = await runHook(HOOK, BASH('rm -rf build'), { GA_CONFIG_DIR: dir3, GA_NO_BROWSER: '1', CLAUDE_PLUGIN_OPTION_LINK_TOKEN: 'gal_opt', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url });
 		assert.equal(pre.permissionDecision, 'ask'); // mock has no /evaluate → unreachable → principal
 		assert.ok(fs.existsSync(path.join(dir3, 'credentials.json')), 'pre-hook linked before evaluating');
+	} finally { server.close(); }
+});
+
+test('no token: the first session opens the Link page once, and a click links the machine', async () => {
+	let approved = false;
+	const { server, calls, url } = await mockService((u, body) => {
+		if (u === '/api/v1/device/code') return { json: { device_code: 'dc-1', user_code: 'ABCD-EFGH', verification_uri: `${url}/link`, verification_uri_complete: `${url}/link?code=ABCD-EFGH`, interval: 1, expires_in: 60 } };
+		if (u === '/api/v1/device/token') return approved
+			? { json: { registration_token: 'gar_auto', access_token: 'acc', expires_in: 900, device_id: 'dev-auto', device_name: 'auto box' } }
+			: { status: 400, json: { error: 'authorization_pending' } };
+		return { status: 404, json: {} };
+	});
+	const START = path.join(__dirname, '..', 'bin', 'ga-session-start.js');
+	const dir = tempConfig(url, { linked: false });
+	const opened = path.join(dir, 'opened.txt');
+	const opener = path.join(dir, 'open.sh');
+	fs.writeFileSync(opener, `#!/bin/sh\necho "$1" >> "${opened}"\n`, { mode: 0o755 });
+	const env = { GA_CONFIG_DIR: dir, GA_OPEN_CMD: opener, GA_POLL_INTERVAL_MS: '200', CLAUDE_PLUGIN_OPTION_SERVICE_URL: url };
+	const run = () => new Promise((resolve) => {
+		const child = spawn(process.execPath, [START], { env: { ...process.env, ...env } });
+		let out = ''; child.stdout.on('data', (c) => (out += c));
+		child.on('close', () => resolve(out ? JSON.parse(out) : null));
+		child.stdin.end('{}');
+	});
+	const waitFor = async (pred, ms = 8000) => { const t = Date.now(); while (Date.now() - t < ms) { if (pred()) return true; await new Promise((r) => setTimeout(r, 100)); } return false; };
+	try {
+		const first = await run();
+		assert.match(first.systemMessage, /click Approve in the browser tab that just opened: .*\/link\?code=ABCD-EFGH/);
+		assert.equal(first.hookSpecificOutput.hookEventName, 'SessionStart');
+		assert.ok(await waitFor(() => fs.existsSync(opened)), 'browser opener was called');
+		assert.equal(fs.readFileSync(opened, 'utf8').trim(), `${url}/link?code=ABCD-EFGH`);
+
+		const second = await run(); // a second session while waiting: remind, do not reopen
+		assert.match(second.systemMessage, /still waiting/);
+		assert.equal(fs.readFileSync(opened, 'utf8').trim().split('\n').length, 1, 'browser opened only once');
+		assert.equal(calls.filter((c) => c.url === '/api/v1/device/code').length, 1);
+
+		approved = true; // the principal clicks Approve
+		assert.ok(await waitFor(() => fs.existsSync(path.join(dir, 'credentials.json'))), 'poller saved credentials');
+		const creds = JSON.parse(fs.readFileSync(path.join(dir, 'credentials.json'), 'utf8'));
+		assert.equal(creds.registration_token, 'gar_auto');
+		assert.equal(creds.linked_via, 'device_flow_auto');
+		assert.ok(await waitFor(() => { try { return JSON.parse(fs.readFileSync(path.join(dir, 'state.json'), 'utf8')).linkPending === null; } catch { return false; } }), 'pending link cleared');
+
+		assert.equal(await run(), null, 'linked → silent');
 	} finally { server.close(); }
 });

@@ -147,12 +147,21 @@ const trail = { system0: 'ESCALATE [unrecognised]' };
 
 	// ── Service: System 1 → System 2 → (escalation) ──────────────────────
 	let creds = client.loadCredentials();
+	let linkHint = 'run /guardian-angel:link <token> with a token from the Set up page';
 	if (!creds) {
-		// In-harness setup: the plugin option may hold a Set up page token nobody has redeemed yet.
-		try { const r = await require('../lib/link').linkFromOption(); if (r.status === 'linked') creds = r.creds; } catch { /* fall through */ }
+		// In-harness setup: a Set up page token in the plugin option, else the automatic browser link.
+		try {
+			const link = require('../lib/link');
+			const r = await link.linkFromOption();
+			if (r.status === 'linked') creds = r.creds;
+			else {
+				const d = await link.startDeviceLink();
+				if (d.status === 'started' || d.status === 'waiting') linkHint = `click Approve at ${d.url}`;
+			}
+		} catch { /* fall through */ }
 	}
 	if (!creds) {
-		return toPrincipal('Guardian Angel is not linked on this machine — run /guardian-angel:link <token> with a token from the Set up page. Until then, your decision', [`SYSTEM 0: ${trail.system0}`]);
+		return toPrincipal(`Guardian Angel is not linked on this machine yet — ${linkHint}. Until then, your decision`, [`SYSTEM 0: ${trail.system0}`]);
 	}
 	const result = await client.evaluate(creds, normalized, { timeoutMs: EVALUATE_TIMEOUT_MS });
 	if (!result.ok) {
